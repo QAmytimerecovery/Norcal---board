@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NorCal Bed Board — Recovery Housing</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@400;500;600;700&display=swap');
+:root{
+  --bg:#0a0c10;--surf:#111418;--surf2:#181c22;--bdr:#252a33;
+  --txt:#cdd6e0;--dim:#5a6478;--mut:#3a4255;
+  --hcol:#e05c1a;--hcolg:#f97316;
+  --incg:#f59e0b;--potg:#f43f5e;--live:#22c55e;
+  --mono:'Share Tech Mono',monospace;--sans:'Rajdhani',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);font-family:var(--sans);color:var(--txt);font-size:13px;min-height:100vh}
+.loading-screen{position:fixed;inset:0;background:var(--bg);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;z-index:999}
+.loading-title{font-family:var(--mono);font-size:18px;letter-spacing:4px;color:#fff}
+.loading-sub{font-size:11px;letter-spacing:3px;color:var(--dim);text-transform:uppercase}
+.spinner{width:32px;height:32px;border:2px solid var(--bdr);border-top-color:var(--hcolg);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err-msg{color:#f87171;font-family:var(--mono);font-size:12px;letter-spacing:1px;text-align:center;max-width:400px;line-height:1.6}
+.retry-btn{margin-top:8px;background:none;border:1px solid #f87171;color:#f87171;padding:6px 18px;border-radius:4px;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:2px}
+.retry-btn:hover{background:#2d0c0c}
+
+/* HEADER */
+.hdr{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;background:var(--surf);border-bottom:1px solid var(--bdr);position:sticky;top:0;z-index:50}
+.hdr-l{display:flex;align-items:baseline;gap:10px}
+.hdr-title{font-family:var(--mono);font-size:16px;letter-spacing:4px;color:#fff}
+.hdr-sub{font-size:10px;letter-spacing:3px;color:var(--dim)}
+.hdr-r{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.clk{font-family:var(--mono);font-size:11px;color:var(--dim)}
+.cap{display:flex;align-items:center;gap:5px;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;padding:3px 9px;font-size:10px;letter-spacing:2px;color:var(--dim)}
+.cap-n{font-family:var(--mono);font-size:12px;font-weight:bold;color:#f59e0b}
+.livebadge{display:flex;align-items:center;gap:5px;font-size:10px;letter-spacing:2px;color:var(--live);background:#052e16;border:1px solid #166534;border-radius:20px;padding:3px 9px}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--live);animation:pulse 1.5s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+.sync-badge{font-size:10px;letter-spacing:1px;padding:3px 9px;border-radius:20px;border:1px solid;font-family:var(--mono);transition:all .3s}
+.s-ok{color:#22c55e;border-color:#166534;background:#052e16}
+.s-saving{color:#f59e0b;border-color:#b45309;background:#1c0f02}
+.s-err{color:#f87171;border-color:#7f1d1d;background:#1c0505}
+.s-load{color:#60a5fa;border-color:#1d4ed8;background:#030e2a}
+
+/* LAYOUT */
+.main{padding:10px;display:flex;flex-direction:column;gap:8px;max-width:900px;margin:0 auto}
+
+/* HOUSE PANEL */
+.panel{background:var(--surf);border-radius:6px;border:1px solid var(--bdr);overflow:visible;transition:border-color .2s}
+.panel.drag-over{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.2)}
+.ph{display:flex;align-items:center;justify-content:space-between;padding:8px 11px 0}
+.pname{font-family:var(--mono);letter-spacing:5px;font-size:14px;color:var(--hcolg)}
+.ph-right{display:flex;align-items:center;gap:6px}
+.cbadge{font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:20px;background:#2a1505;border:1px solid var(--hcol);color:var(--hcolg)}
+.panel-addbtn{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;border:none;line-height:1;font-weight:bold;background:#2a1505;color:var(--hcolg);border:1px solid var(--hcol)}
+.panel-addbtn:hover{opacity:.8}
+.pbar{height:2px;margin:6px 11px 0;border-radius:2px;background:linear-gradient(90deg,var(--hcolg),transparent)}
+
+/* ROOM SECTIONS */
+.room-section{border-top:1px solid var(--bdr);margin-top:6px;transition:background .15s,box-shadow .15s;border-radius:0 0 4px 4px}
+.room-section.room-drag-over{background:rgba(245,158,11,.06);box-shadow:inset 0 0 0 2px rgba(245,158,11,.35)}
+.room-section.room-drag-over .room-header{background:rgba(245,158,11,.08)}
+.room-header{display:flex;align-items:center;justify-content:space-between;padding:5px 11px;background:var(--surf2);transition:background .15s}
+.room-label{font-family:var(--mono);font-size:10px;letter-spacing:3px;color:var(--dim);text-transform:uppercase}
+.room-badge{font-size:9px;letter-spacing:1px;color:var(--mut);font-family:var(--mono)}
+
+/* COLUMN HEADERS */
+.col-h-row{display:grid;grid-template-columns:170px 1fr 78px 72px 44px;padding:5px 11px 4px;gap:4px;border-bottom:1px solid var(--bdr)}
+.ch{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#fff;font-weight:700;font-family:var(--sans)}
+
+/* CLIENT ROWS */
+.rows{padding:3px 5px 5px;display:flex;flex-direction:column;gap:2px;min-height:10px}
+.crow{display:grid;grid-template-columns:170px 1fr 78px 72px 44px;align-items:center;padding:4px 5px;gap:4px;border-radius:4px;transition:background .15s;position:relative;cursor:grab}
+.crow:active{cursor:grabbing}
+.crow:hover{background:var(--surf2)}
+.crow.dragging{opacity:.35;border:1px dashed var(--bdr)}
+.crow[data-hl="yellow"]{border-left:3px solid #fde047;padding-left:3px;background:rgba(253,224,71,.05)}
+.crow[data-hl="green"] {border-left:3px solid #4ade80;padding-left:3px;background:rgba(74,222,128,.05)}
+.crow[data-hl="red"]   {border-left:3px solid #f87171;padding-left:3px;background:rgba(248,113,113,.06)}
+.crow[data-hl="blue"]  {border-left:3px solid #60a5fa;padding-left:3px;background:rgba(96,165,250,.05)}
+.crow[data-hl="orange"]{border-left:3px solid #fb923c;padding-left:3px;background:rgba(251,146,60,.05)}
+.crow[data-hl="purple"]{border-left:3px solid #c084fc;padding-left:3px;background:rgba(192,132,252,.05)}
+.dates{display:flex;align-items:center;gap:4px;position:relative;z-index:1}
+.idate{font-family:var(--mono);font-size:11px;color:#94a3b8;white-space:nowrap}
+.arr{color:var(--mut);font-size:10px}
+.ddate{font-family:var(--mono);font-size:11px;white-space:nowrap;cursor:pointer;padding:1px 3px;border-radius:3px;border:1px solid transparent}
+.ddate:hover{border-color:var(--bdr)}
+.ddate.set{color:#f59e0b}.ddate.unset{color:var(--mut)}
+.cname{font-size:12px;font-weight:600;cursor:pointer;position:relative;z-index:1}
+.cname:hover{text-decoration:underline}
+.ins-cell{display:flex;align-items:center;justify-content:flex-end;position:relative;z-index:1}
+.ins{font-size:10px;letter-spacing:1px;text-transform:uppercase;text-align:right;cursor:pointer;padding:2px 3px;border-radius:3px}
+.ins:hover{background:rgba(255,255,255,.07)}
+.bed-col{display:flex;align-items:center;justify-content:center;position:relative;z-index:1}
+.bed-pill{font-size:9px;letter-spacing:1px;text-transform:uppercase;padding:2px 5px;border-radius:3px;font-weight:700;white-space:nowrap}
+.bed-pill.room1a{color:#67e8f9;background:rgba(103,232,249,.1);border:1px solid rgba(103,232,249,.2)}
+.bed-pill.room1b{color:#a5f3fc;background:rgba(165,243,252,.1);border:1px solid rgba(165,243,252,.2)}
+.bed-pill.room2{color:#86efac;background:rgba(134,239,172,.1);border:1px solid rgba(134,239,172,.2)}
+.bed-pill.room3a{color:#c084fc;background:rgba(192,132,252,.1);border:1px solid rgba(192,132,252,.2)}
+.bed-pill.room3b{color:#d8b4fe;background:rgba(216,180,254,.1);border:1px solid rgba(216,180,254,.2)}
+.bed-pill.room4{color:#fca5a5;background:rgba(252,165,165,.1);border:1px solid rgba(252,165,165,.2)}
+.row-acts{display:flex;align-items:center;gap:2px;position:relative;z-index:2;justify-content:flex-end}
+.ra{width:18px;height:18px;border-radius:3px;border:none;cursor:pointer;font-size:10px;display:flex;align-items:center;justify-content:center;background:var(--surf2);color:var(--dim);transition:background .15s;flex-shrink:0;position:relative}
+.ra:hover{background:#2a3040;color:#e2e8f0}
+.cpopup,.hlpopup{display:none;position:absolute;right:0;top:22px;background:var(--surf);border:1px solid #333a48;border-radius:6px;padding:8px;z-index:500;box-shadow:0 6px 24px rgba(0,0,0,.85)}
+.cpopup{min-width:195px}.hlpopup{min-width:165px}
+.cpopup.open,.hlpopup.open{display:block}
+.pp-title{font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+.swatches{display:flex;gap:4px;flex-wrap:wrap}
+.sw{width:20px;height:20px;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border-color .12s;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:11px}
+.sw:hover,.sw.on{border-color:#fff}
+.sw.clr{background:var(--surf2);border:1px dashed #3a4255;color:var(--dim)}
+.hdiv{height:1px;background:var(--bdr);margin:7px 0}
+.cust-row{display:flex;align-items:center;gap:6px}
+.cust-row label{font-size:9px;letter-spacing:1px;color:var(--dim);text-transform:uppercase}
+.cust-row input[type=color]{width:28px;height:20px;border:1px solid var(--bdr);border-radius:3px;background:none;cursor:pointer;padding:1px}
+.vrow{display:grid;grid-template-columns:170px 1fr 78px 72px 44px;align-items:center;padding:4px 5px;gap:4px;border-radius:4px;border:1px dashed #1e2430;transition:border-color .15s,background .15s}
+.vrow-hover{border-color:#f59e0b!important;background:rgba(245,158,11,.07)!important}
+.vtxt{font-size:11px;color:var(--mut);letter-spacing:1px}
+.vbed{font-size:9px;color:var(--mut);letter-spacing:1px;text-align:center}
+
+/* BOTTOM PANELS */
+.bot-row{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.spanel{background:var(--surf);border-radius:6px;border:1px solid var(--bdr);transition:border-color .2s}
+.spanel.drag-over{border-color:#f59e0b;box-shadow:0 0 0 2px rgba(245,158,11,.2)}
+.sh{display:flex;align-items:center;justify-content:space-between;padding:8px 11px;border-bottom:1px solid var(--bdr)}
+.stitle{font-family:var(--mono);letter-spacing:4px;font-size:11px}
+.incoming .stitle{color:var(--incg)}.potential .stitle{color:var(--potg)}
+.addbtn{width:20px;height:20px;border-radius:4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;border:none;line-height:1}
+.incoming .addbtn{background:#3b1f05;color:var(--incg);border:1px solid #b45309}
+.potential .addbtn{background:#2d0515;color:var(--potg);border:1px solid #881337}
+.ilist,.plist{padding:5px;display:flex;flex-direction:column;gap:3px;min-height:20px}
+.icard{background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;padding:7px 9px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr auto;align-items:center;gap:8px;cursor:grab;transition:opacity .15s}
+.icard:active{cursor:grabbing}
+.icard.dragging{opacity:.35}
+.icard:hover{background:#1e2530}
+.iinfo{display:flex;flex-direction:column;gap:1px}
+.ilbl{font-size:9px;letter-spacing:2px;color:var(--mut);text-transform:uppercase}
+.ival{font-family:var(--mono);font-size:11px;color:#94a3b8;cursor:pointer}
+.ival:hover{color:#fff}
+.ival.hi{color:var(--incg)}
+.iname2{font-size:12px;font-weight:600;color:#e2e8f0;cursor:pointer}
+.rmbtn{background:none;border:none;color:var(--mut);cursor:pointer;font-size:14px;padding:2px 4px;border-radius:3px}
+.rmbtn:hover{color:#f87171;background:#2d0c0c}
+.pcard{background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;padding:7px 9px;display:flex;align-items:center;justify-content:space-between}
+.pcard:hover{background:#1e1520}
+.pinfo{display:flex;flex-direction:column;gap:2px}
+.pname2{font-size:12px;font-weight:600;color:#e2e8f0}
+.pins{font-size:11px;color:var(--dim)}
+.pacts{display:flex;gap:5px}
+.appbtn{background:#052e16;border:1px solid #166534;color:var(--live);font-size:12px;padding:3px 6px;border-radius:3px;cursor:pointer}
+.appbtn:hover{background:#0a4a22}
+.drag-hint{font-size:9px;letter-spacing:1px;color:var(--mut);text-align:center;padding:4px;font-family:var(--mono)}
+
+/* MODALS */
+.ov{display:none;position:fixed;inset:0;background:rgba(0,0,0,.78);z-index:300;align-items:center;justify-content:center}
+.ov.open{display:flex}
+.modal{background:var(--surf);border:1px solid var(--bdr);border-radius:8px;padding:20px;width:420px;max-width:95vw}
+.mtitle{font-family:var(--mono);letter-spacing:3px;font-size:12px;color:#e2e8f0;margin-bottom:14px}
+.fg{margin-bottom:11px}
+.fl{display:block;font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;margin-bottom:4px}
+.fi{width:100%;background:var(--surf2);border:1px solid var(--bdr);border-radius:4px;padding:6px 8px;color:var(--txt);font-family:var(--mono);font-size:12px;outline:none}
+.fi:focus{border-color:#3a4a60}
+select.fi option{background:var(--surf2)}
+.frow{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.macts{display:flex;gap:7px;margin-top:14px;justify-content:flex-end;align-items:center}
+.bcnl{background:none;border:1px solid var(--bdr);color:var(--dim);padding:6px 14px;border-radius:4px;cursor:pointer;font-family:var(--sans);font-size:12px}
+.badd{border:none;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:var(--sans);font-size:12px;font-weight:600}
+.badd.bi{background:#b45309;color:#fff}
+.badd.bp{background:var(--potg);color:#fff}
+.badd.bg{background:#166534;color:#fff}
+.bdel{background:#7f1d1d;color:#fff;margin-right:auto}
+</style>
+</head>
+<body>
+
+<div class="loading-screen" id="loading">
+  <div class="spinner"></div>
+  <div class="loading-title">NORCAL</div>
+  <div class="loading-sub" id="load-msg">Connecting to shared database...</div>
+  <div class="err-msg" id="load-err" style="display:none"></div>
+  <button class="retry-btn" id="retry-btn" style="display:none" onclick="init()">RETRY</button>
+</div>
+
+<div class="hdr">
+  <div class="hdr-l">
+    <span class="hdr-title">NORCAL</span>
+    <span class="hdr-sub">Recovery Housing</span>
+  </div>
+  <div class="hdr-r">
+    <span class="clk" id="clk"></span>
+    <div class="cap">CAPACITY <span class="cap-n" id="capn">—</span></div>
+    <div class="livebadge"><div class="dot"></div> LIVE</div>
+    <span class="sync-badge s-load" id="sync">● CONNECTING</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- NORCAL PANEL -->
+  <div class="panel" id="panel-norcal" data-house="norcal">
+    <div class="ph">
+      <span class="pname">N O R C A L</span>
+      <div class="ph-right">
+        <span class="cbadge" id="b-norcal"></span>
+        <button class="panel-addbtn" onclick="openAddClient()" title="Add client">+</button>
+      </div>
+    </div>
+    <div class="pbar"></div>
+
+    <!-- ROOM 1 -->
+    <div class="room-section">
+      <div class="room-header">
+        <span class="room-label">Room 1</span>
+        <span class="room-badge">Bed A · Bed B</span>
+      </div>
+      <div class="col-h-row"><span class="ch">Intake &rarr; Discharge</span><span class="ch">Client</span><span class="ch" style="text-align:right">Insurance</span><span class="ch" style="text-align:center">Bed</span><span class="ch"></span></div>
+      <div class="rows" id="r-room1"></div>
+    </div>
+
+    <!-- ROOM 2 -->
+    <div class="room-section">
+      <div class="room-header">
+        <span class="room-label">Room 2</span>
+        <span class="room-badge">Single</span>
+      </div>
+      <div class="col-h-row"><span class="ch">Intake &rarr; Discharge</span><span class="ch">Client</span><span class="ch" style="text-align:right">Insurance</span><span class="ch" style="text-align:center">Bed</span><span class="ch"></span></div>
+      <div class="rows" id="r-room2"></div>
+    </div>
+
+    <!-- ROOM 3 -->
+    <div class="room-section">
+      <div class="room-header">
+        <span class="room-label">Room 3</span>
+        <span class="room-badge">Bed A · Bed B</span>
+      </div>
+      <div class="col-h-row"><span class="ch">Intake &rarr; Discharge</span><span class="ch">Client</span><span class="ch" style="text-align:right">Insurance</span><span class="ch" style="text-align:center">Bed</span><span class="ch"></span></div>
+      <div class="rows" id="r-room3"></div>
+    </div>
+
+    <!-- ROOM 4 -->
+    <div class="room-section">
+      <div class="room-header">
+        <span class="room-label">Room 4</span>
+        <span class="room-badge">Single</span>
+      </div>
+      <div class="col-h-row"><span class="ch">Intake &rarr; Discharge</span><span class="ch">Client</span><span class="ch" style="text-align:right">Insurance</span><span class="ch" style="text-align:center">Bed</span><span class="ch"></span></div>
+      <div class="rows" id="r-room4"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM -->
+  <div class="bot-row">
+    <div class="spanel incoming" id="panel-incoming">
+      <div class="sh"><span class="stitle">INCOMING</span><button class="addbtn" id="btn-inc">+</button></div>
+      <div class="ilist" id="ilist"></div>
+      <div class="drag-hint">⇅ Drag clients to any room above · Drag between rooms too</div>
+    </div>
+    <div class="spanel potential">
+      <div class="sh"><span class="stitle">POTENTIAL</span><button class="addbtn" id="btn-pot">+</button></div>
+      <div class="plist" id="plist"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ADD CLIENT -->
+<div class="ov" id="ov-addclient">
+  <div class="modal">
+    <div class="mtitle">+ ADD CLIENT TO NORCAL</div>
+    <div class="fg"><label class="fl">Client Name</label><input class="fi" id="ac-n" placeholder="First Last"/></div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Intake Date</label><input class="fi" id="ac-in" placeholder="e.g. 5-1"/></div>
+      <div class="fg"><label class="fl">Discharge Date</label><input class="fi" id="ac-dis" type="date"/></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Insurance</label><input class="fi" id="ac-ins" placeholder="e.g. BCBS"/></div>
+      <div class="fg"><label class="fl">Room / Bed</label>
+        <select class="fi" id="ac-bed">
+          <option value="Room 1A">Room 1 — Bed A</option>
+          <option value="Room 1B">Room 1 — Bed B</option>
+          <option value="Room 2">Room 2 — Single</option>
+          <option value="Room 3A">Room 3 — Bed A</option>
+          <option value="Room 3B">Room 3 — Bed B</option>
+          <option value="Room 4">Room 4 — Single</option>
+        </select>
+      </div>
+    </div>
+    <div class="macts"><button class="bcnl" id="cnl-addclient">Cancel</button><button class="badd bg" id="save-addclient">Add Client</button></div>
+  </div>
+</div>
+
+<!-- ADD INCOMING -->
+<div class="ov" id="ov-inc">
+  <div class="modal">
+    <div class="mtitle">+ ADD INCOMING</div>
+    <div class="fg"><label class="fl">Client Name</label><input class="fi" id="in-n" placeholder="First Last"/></div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Insurance</label><input class="fi" id="in-i" placeholder="e.g. BCBS"/></div>
+      <div class="fg"><label class="fl">Room / Bed</label>
+        <select class="fi" id="in-h">
+          <option value="">Select...</option>
+          <option value="Room 1A">Room 1 — Bed A</option>
+          <option value="Room 1B">Room 1 — Bed B</option>
+          <option value="Room 2">Room 2 — Single</option>
+          <option value="Room 3A">Room 3 — Bed A</option>
+          <option value="Room 3B">Room 3 — Bed B</option>
+          <option value="Room 4">Room 4 — Single</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Projected Intake Date</label><input class="fi" id="in-d" type="date"/></div>
+    <div class="macts"><button class="bcnl" id="cnl-inc">Cancel</button><button class="badd bi" id="save-inc">Add Client</button></div>
+  </div>
+</div>
+
+<!-- ADD POTENTIAL -->
+<div class="ov" id="ov-pot">
+  <div class="modal">
+    <div class="mtitle">+ ADD POTENTIAL</div>
+    <div class="fg"><label class="fl">Client Name</label><input class="fi" id="pot-n" placeholder="First Last"/></div>
+    <div class="fg"><label class="fl">Insurance</label><input class="fi" id="pot-i" placeholder="e.g. Aetna"/></div>
+    <div class="macts"><button class="bcnl" id="cnl-pot">Cancel</button><button class="badd bp" id="save-pot">Add Client</button></div>
+  </div>
+</div>
+
+<!-- EDIT CLIENT -->
+<div class="ov" id="ov-edit">
+  <div class="modal">
+    <div class="mtitle" id="edit-title">EDIT CLIENT</div>
+    <div class="fg"><label class="fl">Client Name</label><input class="fi" id="ed-n"/></div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Intake Date</label><input class="fi" id="ed-in" placeholder="e.g. 4-15"/></div>
+      <div class="fg"><label class="fl">Discharge Date</label><input class="fi" id="ed-dis" type="date"/></div>
+    </div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Insurance</label><input class="fi" id="ed-ins"/></div>
+      <div class="fg"><label class="fl">Room / Bed</label>
+        <select class="fi" id="ed-bed">
+          <option value="Room 1A">Room 1 — Bed A</option>
+          <option value="Room 1B">Room 1 — Bed B</option>
+          <option value="Room 2">Room 2 — Single</option>
+          <option value="Room 3A">Room 3 — Bed A</option>
+          <option value="Room 3B">Room 3 — Bed B</option>
+          <option value="Room 4">Room 4 — Single</option>
+        </select>
+      </div>
+    </div>
+    <div class="macts">
+      <button class="badd bdel" id="del-client">Remove Client</button>
+      <button class="bcnl" id="cnl-edit">Cancel</button>
+      <button class="badd bg" id="save-edit">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- EDIT INCOMING -->
+<div class="ov" id="ov-iedit">
+  <div class="modal">
+    <div class="mtitle">EDIT INCOMING</div>
+    <div class="fg"><label class="fl">Client Name</label><input class="fi" id="ie-n"/></div>
+    <div class="frow">
+      <div class="fg"><label class="fl">Insurance</label><input class="fi" id="ie-i"/></div>
+      <div class="fg"><label class="fl">Room / Bed</label>
+        <select class="fi" id="ie-h">
+          <option value="">Select...</option>
+          <option value="Room 1A">Room 1 — Bed A</option>
+          <option value="Room 1B">Room 1 — Bed B</option>
+          <option value="Room 2">Room 2 — Single</option>
+          <option value="Room 3A">Room 3 — Bed A</option>
+          <option value="Room 3B">Room 3 — Bed B</option>
+          <option value="Room 4">Room 4 — Single</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg"><label class="fl">Projected Intake Date</label><input class="fi" id="ie-d" type="date"/></div>
+    <div class="macts"><button class="bcnl" id="cnl-iedit">Cancel</button><button class="badd bi" id="save-iedit">Save</button></div>
+  </div>
+</div>
+
+<script>
+// ── FIREBASE — separate key so data never mixes with main board ────────
+const FB_URL = 'https://bed-board-9cf09-default-rtdb.firebaseio.com/norcal';
+
+// Room definitions — which beds belong to which room container
+const ROOMS = [
+  { id:'room1', label:'Room 1', beds:['Room 1A','Room 1B'] },
+  { id:'room2', label:'Room 2', beds:['Room 2'] },
+  { id:'room3', label:'Room 3', beds:['Room 3A','Room 3B'] },
+  { id:'room4', label:'Room 4', beds:['Room 4'] },
+];
+const ALL_BEDS = ['Room 1A','Room 1B','Room 2','Room 3A','Room 3B','Room 4'];
+const TOTAL_BEDS = 6;
+
+const DEFAULTS = {
+  clients: [],
+  incoming: [],
+  potential: []
+};
+
+const BED_PILL_CLASS = {
+  'Room 1A':'room1a','Room 1B':'room1b',
+  'Room 2':'room2',
+  'Room 3A':'room3a','Room 3B':'room3b',
+  'Room 4':'room4'
+};
+
+let state = null, editTarget = null, iEditTarget = null;
+let saveTimer = null, pollTimer = null, lastSavedJSON = '';
+let dragSrc = null;
+
+const FC=[{v:"#ffffff",l:"White"},{v:"#fde047",l:"Yellow"},{v:"#4ade80",l:"Green"},{v:"#f87171",l:"Red"},{v:"#60a5fa",l:"Blue"},{v:"#fb923c",l:"Orange"},{v:"#c084fc",l:"Purple"},{v:"#f9a8d4",l:"Pink"},{v:"#94a3b8",l:"Gray"}];
+const HL=[{v:"yellow",b:"#fde047"},{v:"green",b:"#4ade80"},{v:"red",b:"#f87171"},{v:"blue",b:"#60a5fa"},{v:"orange",b:"#fb923c"},{v:"purple",b:"#c084fc"}];
+
+function setSync(cls,label){const el=document.getElementById('sync');el.className='sync-badge '+cls;el.textContent=label;}
+function tick(){const n=new Date(),days=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],mos=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];let h=n.getHours(),m=n.getMinutes(),s=n.getSeconds();const ap=h>=12?'PM':'AM';h=h%12||12;const p=x=>String(x).padStart(2,'0');document.getElementById('clk').textContent=`${days[n.getDay()]}, ${mos[n.getMonth()]} ${n.getDate()}, ${n.getFullYear()}  ${p(h)}:${p(m)}:${p(s)} ${ap}`;}
+setInterval(tick,1000);tick();
+
+function updCap(){
+  if(!state)return;
+  const filled=state.clients.length;
+  document.getElementById('capn').textContent=Math.round(filled/TOTAL_BEDS*100)+'%';
+  document.getElementById('b-norcal').textContent=filled+'/'+TOTAL_BEDS;
+}
+function fmtDis(v){if(!v)return'';const d=new Date(v+'T00:00:00');return(d.getMonth()+1)+'-'+d.getDate();}
+function disToInput(s){if(!s)return'';const y=new Date().getFullYear();const p=s.split('-');if(p.length<2)return'';return y+'-'+p[0].padStart(2,'0')+'-'+p[1].padStart(2,'0');}
+
+async function fbGet(){const r=await fetch(FB_URL+'.json');if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+async function fbSet(data){const r=await fetch(FB_URL+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});if(!r.ok)throw new Error('HTTP '+r.status);return r.json();}
+
+async function init(){
+  document.getElementById('load-err').style.display='none';
+  document.getElementById('retry-btn').style.display='none';
+  document.getElementById('load-msg').textContent='Connecting to shared database...';
+  document.querySelector('.spinner').style.display='block';
+  setSync('s-load','● CONNECTING');
+  try{
+    let data=await fbGet();
+    if(!data){data=JSON.parse(JSON.stringify(DEFAULTS));await fbSet(data);}
+    state=normalise(data);lastSavedJSON=JSON.stringify(state);
+    document.getElementById('loading').style.display='none';
+    setSync('s-ok','● SYNCED');
+    renderAll();startPolling();setupDrop();
+  }catch(e){
+    document.querySelector('.spinner').style.display='none';
+    document.getElementById('load-msg').textContent='';
+    document.getElementById('load-err').style.display='block';
+    document.getElementById('load-err').textContent='Could not connect.\n\nCheck internet connection.\n\nError: '+e.message;
+    document.getElementById('retry-btn').style.display='inline-block';
+    setSync('s-err','● OFFLINE');
+  }
+}
+
+function normalise(data){
+  if(!data.clients)data.clients=[];
+  if(!data.incoming)data.incoming=[];
+  if(!data.potential)data.potential=[];
+  data.clients=data.clients.filter(Boolean).map(c=>({name:c.name||'',intake:c.intake||'',discharge:c.discharge||'',bed:c.bed||'Room 1A',ins:c.ins||'',color:c.color||'',hl:c.hl||''}));
+  data.incoming=data.incoming.filter(Boolean);
+  data.potential=data.potential.filter(Boolean);
+  return data;
+}
+
+function startPolling(){
+  clearInterval(pollTimer);
+  pollTimer=setInterval(async()=>{
+    if(saveTimer)return;
+    try{const fresh=await fbGet();if(!fresh)return;const fj=JSON.stringify(fresh);if(fj!==lastSavedJSON){state=normalise(fresh);lastSavedJSON=fj;renderAll();setSync('s-ok','● SYNCED');}}
+    catch(e){setSync('s-err','● OFFLINE');}
+  },8000);
+}
+
+function saveState(){
+  setSync('s-saving','● SAVING...');
+  clearTimeout(saveTimer);
+  saveTimer=setTimeout(async()=>{
+    try{await fbSet(state);lastSavedJSON=JSON.stringify(state);setSync('s-ok','● SYNCED');}
+    catch(e){setSync('s-err','● SAVE FAILED');}
+    finally{saveTimer=null;}
+  },600);
+}
+
+function closeAllPopups(){document.querySelectorAll('.cpopup,.hlpopup').forEach(p=>p.classList.remove('open'));}
+document.addEventListener('click',e=>{if(!e.target.closest('.ra'))closeAllPopups();});
+function renderAll(){renderRooms();renderIncoming();renderPotential();}
+
+// ── DRAG & DROP ────────────────────────────────────────────────────────
+function setupDrop(){
+  // Each room section is a drop target
+  ROOMS.forEach(room=>{
+    // We target the rows container AND the room-section div
+    const section=document.getElementById('r-'+room.id).closest('.room-section');
+    const rowsCont=document.getElementById('r-'+room.id);
+
+    [section, rowsCont].forEach(el=>{
+      el.addEventListener('dragover',e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        section.classList.add('room-drag-over');
+      });
+      el.addEventListener('dragleave',e=>{
+        if(!section.contains(e.relatedTarget))section.classList.remove('room-drag-over');
+      });
+      el.addEventListener('drop',e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        section.classList.remove('room-drag-over');
+        if(!dragSrc)return;
+
+        // Pick the first available bed in this room as default
+        const occupiedInRoom=state.clients.filter(c=>room.beds.includes(c.bed)).map(c=>c.bed);
+        const freeBed=room.beds.find(b=>!occupiedInRoom.includes(b));
+
+        if(dragSrc.type==='incoming'){
+          // Incoming → room
+          const c=state.incoming[dragSrc.idx];
+          const today=new Date();
+          const intakeStr=(today.getMonth()+1)+'-'+today.getDate();
+          // Use their assigned bed if it's in this room, otherwise first free bed
+          const targetBed=(c.house&&room.beds.includes(c.house))?c.house:(freeBed||room.beds[0]);
+          state.clients.push({name:c.name,intake:intakeStr,discharge:'',bed:targetBed,ins:c.ins||'',color:'',hl:''});
+          state.incoming.splice(dragSrc.idx,1);
+          saveState();renderAll();
+
+        } else if(dragSrc.type==='client'){
+          // Client → different room
+          const c=state.clients[dragSrc.idx];
+          const currentRoom=ROOMS.find(r=>r.beds.includes(c.bed));
+            // Same room — reorder by swapping positions in state.clients
+          if(currentRoom&&currentRoom.id===room.id){
+            if(room.beds.length<2)return; // single bed room, nothing to reorder
+            // Find the other client in this room (if any) and swap their positions
+            const roomClientIdxs=state.clients.map((cl,idx)=>({cl,idx})).filter(({cl})=>room.beds.includes(cl.bed));
+            if(roomClientIdxs.length<2)return; // only one person in room, nothing to swap
+            const otherEntry=roomClientIdxs.find(({idx})=>idx!==dragSrc.idx);
+            if(!otherEntry)return;
+            // Swap the bed labels between the two clients
+            const tempBed=state.clients[dragSrc.idx].bed;
+            state.clients[dragSrc.idx].bed=state.clients[otherEntry.idx].bed;
+            state.clients[otherEntry.idx].bed=tempBed;
+            saveState();renderAll();
+            dragSrc=null;return;
+          }
+          // Assign to first free bed in target room
+          const targetBed=freeBed||room.beds[0];
+          c.bed=targetBed;
+          saveState();renderAll();
+        }
+        dragSrc=null;
+      });
+    });
+  });
+}
+
+// ── RENDER ROOMS ──────────────────────────────────────────────────────
+function renderRooms(){
+  if(!state)return;
+  ROOMS.forEach(room=>{
+    const cont=document.getElementById('r-'+room.id);
+    cont.innerHTML='';
+    // clients in this room
+    const roomClients=state.clients.map((c,i)=>({c,i})).filter(({c})=>room.beds.includes(c.bed));
+
+    roomClients.forEach(({c,i})=>{
+      const row=document.createElement('div');
+      row.className='crow';
+      row.draggable=true;
+      if(c.hl)row.setAttribute('data-hl',c.hl);
+      const cs=c.color?`color:${c.color}`:'color:#e2e8f0';
+      const insc=c.color?`color:${c.color}`:'color:#5a6478';
+      const pillClass=BED_PILL_CLASS[c.bed]||'room1a';
+      const fcHTML=FC.map(f=>`<div class="sw${c.color===f.v?' on':''}" style="background:${f.v}" data-v="${f.v}" title="${f.l}"></div>`).join('')+`<div class="sw clr" data-v="">✕</div>`;
+      const hlHTML=HL.map(hl=>`<div class="sw${c.hl===hl.v?' on':''}" style="background:${hl.b}" data-v="${hl.v}" title="${hl.v}"></div>`).join('')+`<div class="sw clr" data-v="">✕</div>`;
+
+      row.innerHTML=`
+        <div class="dates">
+          <span class="idate">${c.intake}</span>
+          <span class="arr">→</span>
+          <span class="ddate ${c.discharge?'set':'unset'}">${c.discharge||'discharge'}</span>
+        </div>
+        <span class="cname" style="${cs}">${c.name}</span>
+        <div class="ins-cell"><span class="ins" style="${insc}">${c.ins}</span></div>
+        <div class="bed-col"><span class="bed-pill ${pillClass}">${c.bed}</span></div>
+        <div class="row-acts">
+          <div class="ra fc-ra" title="Font color" style="font-weight:700;font-size:11px">A
+            <div class="cpopup">
+              <div class="pp-title">Font Color</div>
+              <div class="swatches">${fcHTML}</div>
+              <div class="hdiv"></div>
+              <div class="cust-row"><label>Custom</label><input type="color" value="${c.color||'#e2e8f0'}" class="cfc"></div>
+            </div>
+          </div>
+          <div class="ra hl-ra" title="Highlight" style="font-size:12px">▮
+            <div class="hlpopup">
+              <div class="pp-title">Highlight Row</div>
+              <div class="swatches">${hlHTML}</div>
+            </div>
+          </div>
+        </div>`;
+
+      row.addEventListener('dragstart',e=>{dragSrc={type:'client',idx:i};setTimeout(()=>row.classList.add('dragging'),0);e.dataTransfer.effectAllowed='move';});
+      row.addEventListener('dragend',()=>row.classList.remove('dragging'));
+      row.querySelector('.ddate').addEventListener('click',e=>{e.stopPropagation();openEdit(i);});
+      row.querySelector('.cname').addEventListener('click',e=>{e.stopPropagation();openEdit(i);});
+      row.querySelector('.ins').addEventListener('click',e=>{e.stopPropagation();openEdit(i);});
+      const fcRa=row.querySelector('.fc-ra'),cp=row.querySelector('.cpopup');
+      fcRa.addEventListener('click',e=>{e.stopPropagation();const was=cp.classList.contains('open');closeAllPopups();if(!was)cp.classList.add('open');});
+      cp.querySelectorAll('.sw').forEach(sw=>{sw.addEventListener('click',e=>{e.stopPropagation();c.color=sw.dataset.v;closeAllPopups();saveState();renderRooms();});});
+      cp.querySelector('.cfc').addEventListener('input',e=>{e.stopPropagation();c.color=e.target.value;saveState();renderRooms();});
+      const hlRa=row.querySelector('.hl-ra'),hp=row.querySelector('.hlpopup');
+      hlRa.addEventListener('click',e=>{e.stopPropagation();const was=hp.classList.contains('open');closeAllPopups();if(!was)hp.classList.add('open');});
+      hp.querySelectorAll('.sw').forEach(sw=>{sw.addEventListener('click',e=>{e.stopPropagation();c.hl=sw.dataset.v;closeAllPopups();saveState();renderRooms();});});
+      cont.appendChild(row);
+    });
+
+    // Vacant beds in this room
+    const occupiedBeds=roomClients.map(({c})=>c.bed);
+    room.beds.forEach(bed=>{
+      if(!occupiedBeds.includes(bed)){
+        const vr=document.createElement('div');vr.className='vrow vrow-drop';
+        vr.setAttribute('data-bed',bed);
+        vr.innerHTML=`<span></span><span class="vtxt">— OPEN —</span><span></span><div class="bed-col"><span class="vbed">${bed}</span></div><span></span>`;
+        // Allow dragging a client from same room onto the open bed slot
+        vr.addEventListener('dragover',e=>{e.preventDefault();e.stopPropagation();vr.classList.add('vrow-hover');});
+        vr.addEventListener('dragleave',()=>vr.classList.remove('vrow-hover'));
+        vr.addEventListener('drop',e=>{
+          e.preventDefault();e.stopPropagation();vr.classList.remove('vrow-hover');
+          if(!dragSrc||dragSrc.type!=='client')return;
+          // Move the dragged client to this specific bed
+          state.clients[dragSrc.idx].bed=bed;
+          saveState();renderAll();dragSrc=null;
+        });
+        cont.appendChild(vr);
+      }
+    });
+  });
+  updCap();
+}
+
+function openEdit(i){
+  editTarget=i;
+  const c=state.clients[i];
+  document.getElementById('edit-title').textContent='EDIT — '+c.name;
+  document.getElementById('ed-n').value=c.name;
+  document.getElementById('ed-in').value=c.intake;
+  document.getElementById('ed-dis').value=disToInput(c.discharge);
+  document.getElementById('ed-ins').value=c.ins;
+  document.getElementById('ed-bed').value=c.bed;
+  openOv('ov-edit');
+}
+
+function renderIncoming(){
+  if(!state)return;
+  const cont=document.getElementById('ilist');cont.innerHTML='';
+  state.incoming.forEach((c,i)=>{
+    const card=document.createElement('div');card.className='icard';card.draggable=true;
+    card.innerHTML=`
+      <div class="iinfo"><span class="ilbl">Client</span><span class="iname2">${c.name}</span></div>
+      <div class="iinfo"><span class="ilbl">Insurance</span><span class="ival">${c.ins||'—'}</span></div>
+      <div class="iinfo"><span class="ilbl">Room/Bed</span><span class="ival hi">${c.house||'—'}</span></div>
+      <div class="iinfo"><span class="ilbl">Proj. Intake</span><span class="ival hi">${c.date||'—'}</span></div>
+      <button class="rmbtn">×</button>`;
+    card.addEventListener('dragstart',e=>{dragSrc={type:'incoming',idx:i,house:c.house};setTimeout(()=>card.classList.add('dragging'),0);e.dataTransfer.effectAllowed='move';});
+    card.addEventListener('dragend',()=>card.classList.remove('dragging'));
+    card.querySelectorAll('.ival,.iname2').forEach(el=>{el.style.cursor='pointer';el.addEventListener('click',()=>openIEdit(i));});
+    card.querySelector('.rmbtn').addEventListener('click',e=>{e.stopPropagation();state.incoming.splice(i,1);saveState();renderIncoming();});
+    cont.appendChild(card);
+  });
+}
+
+function openIEdit(i){
+  iEditTarget=i;const c=state.incoming[i];
+  document.getElementById('ie-n').value=c.name;
+  document.getElementById('ie-i').value=c.ins;
+  document.getElementById('ie-h').value=c.house||'';
+  const p=c.date?c.date.split('-'):[];
+  document.getElementById('ie-d').value=p.length===2?new Date().getFullYear()+'-'+p[0].padStart(2,'0')+'-'+p[1].padStart(2,'0'):'';
+  openOv('ov-iedit');
+}
+
+function renderPotential(){
+  if(!state)return;
+  const cont=document.getElementById('plist');cont.innerHTML='';
+  state.potential.forEach((c,i)=>{
+    const card=document.createElement('div');card.className='pcard';
+    card.innerHTML=`
+      <div class="pinfo"><span class="pname2">${c.name}</span><span class="pins">${c.ins}</span></div>
+      <div class="pacts">
+        <button class="appbtn" title="Move to Incoming">✓</button>
+        <button class="rmbtn">×</button>
+      </div>`;
+    card.querySelector('.appbtn').addEventListener('click',()=>{state.incoming.push({name:c.name,ins:c.ins,house:'',date:''});state.potential.splice(i,1);saveState();renderIncoming();renderPotential();});
+    card.querySelector('.rmbtn').addEventListener('click',()=>{state.potential.splice(i,1);saveState();renderPotential();});
+    cont.appendChild(card);
+  });
+}
+
+function openAddClient(){
+  document.getElementById('ac-n').value='';
+  document.getElementById('ac-in').value='';
+  document.getElementById('ac-dis').value='';
+  document.getElementById('ac-ins').value='';
+  document.getElementById('ac-bed').value='Room 1A';
+  openOv('ov-addclient');
+}
+
+function openOv(id){document.getElementById(id).classList.add('open');}
+function closeOv(id){document.getElementById(id).classList.remove('open');}
+document.querySelectorAll('.ov').forEach(el=>{el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');});});
+
+document.getElementById('btn-inc').addEventListener('click',()=>openOv('ov-inc'));
+document.getElementById('btn-pot').addEventListener('click',()=>openOv('ov-pot'));
+document.getElementById('cnl-inc').addEventListener('click',()=>closeOv('ov-inc'));
+document.getElementById('cnl-pot').addEventListener('click',()=>closeOv('ov-pot'));
+document.getElementById('cnl-edit').addEventListener('click',()=>closeOv('ov-edit'));
+document.getElementById('cnl-iedit').addEventListener('click',()=>closeOv('ov-iedit'));
+document.getElementById('cnl-addclient').addEventListener('click',()=>closeOv('ov-addclient'));
+
+document.getElementById('save-addclient').addEventListener('click',()=>{
+  const name=document.getElementById('ac-n').value.trim();if(!name)return;
+  const dv=document.getElementById('ac-dis').value;
+  state.clients.push({name,intake:document.getElementById('ac-in').value.trim()||((new Date().getMonth()+1)+'-'+new Date().getDate()),discharge:dv?fmtDis(dv):'',bed:document.getElementById('ac-bed').value,ins:document.getElementById('ac-ins').value.trim(),color:'',hl:''});
+  closeOv('ov-addclient');saveState();renderRooms();
+});
+
+document.getElementById('save-inc').addEventListener('click',()=>{
+  const name=document.getElementById('in-n').value.trim();if(!name)return;
+  const dv=document.getElementById('in-d').value;
+  state.incoming.push({name,ins:document.getElementById('in-i').value.trim(),house:document.getElementById('in-h').value,date:dv?fmtDis(dv):''});
+  ['in-n','in-i','in-d'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('in-h').value='';
+  closeOv('ov-inc');saveState();renderIncoming();
+});
+
+document.getElementById('save-pot').addEventListener('click',()=>{
+  const name=document.getElementById('pot-n').value.trim();if(!name)return;
+  state.potential.push({name,ins:document.getElementById('pot-i').value.trim()});
+  ['pot-n','pot-i'].forEach(id=>document.getElementById(id).value='');
+  closeOv('ov-pot');saveState();renderPotential();
+});
+
+document.getElementById('save-edit').addEventListener('click',()=>{
+  if(editTarget===null)return;
+  const c=state.clients[editTarget];
+  c.name=document.getElementById('ed-n').value.trim()||c.name;
+  c.intake=document.getElementById('ed-in').value.trim()||c.intake;
+  c.discharge=fmtDis(document.getElementById('ed-dis').value);
+  c.ins=document.getElementById('ed-ins').value.trim()||c.ins;
+  c.bed=document.getElementById('ed-bed').value;
+  closeOv('ov-edit');saveState();renderRooms();
+});
+
+document.getElementById('del-client').addEventListener('click',()=>{
+  if(editTarget===null)return;
+  state.clients.splice(editTarget,1);
+  closeOv('ov-edit');saveState();renderRooms();
+});
+
+document.getElementById('save-iedit').addEventListener('click',()=>{
+  if(iEditTarget===null)return;
+  const c=state.incoming[iEditTarget];
+  c.name=document.getElementById('ie-n').value.trim()||c.name;
+  c.ins=document.getElementById('ie-i').value.trim();
+  c.house=document.getElementById('ie-h').value;
+  c.date=fmtDis(document.getElementById('ie-d').value);
+  closeOv('ov-iedit');saveState();renderIncoming();
+});
+
+init();
+</script>
+</body>
+</html>
